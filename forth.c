@@ -54,6 +54,11 @@ interpreter.
 #include <string.h>
 #include <time.h>
 
+#include "hw.h"
+
+#define NDEBUG 1
+#define NFIO   1
+
 #define CORE_SIZE (2048)
 
 typedef uintptr_t forth_cell_t; /**< FORTH cell large enough for a pointer*/
@@ -264,11 +269,13 @@ static const char *instruction_names[] = { /**< instructions with names */
 #undef X
 };
 
+#ifndef NDEBUG
 static const char *instruction_help_strings[] = {
 #define X(ENUM, STRING, HELP) HELP,
 	XMACRO_INSTRUCTIONS
 #undef X
 };
+#endif
 
 static const char *emsg(void)
 {
@@ -282,6 +289,7 @@ static const char *emsg(void)
 static int logger(const char *prefix, const char *func, 
 		unsigned line, const char *fmt, ...)
 {
+#ifndef NDEBUG
 	int r;
 	va_list ap;
 	assert(prefix && func && fmt);
@@ -289,14 +297,17 @@ static int logger(const char *prefix, const char *func,
 	va_start(ap, fmt);
 	r = vfprintf(stderr, fmt, ap);
 	va_end(ap);
-	fputc('\n', stderr);
+	hw_fputc('\n', stderr);
 	return r;
+#else
+	return 0;
+#endif
 }
 
 static int forth_get_char(void)
 {
        switch(o.m[SOURCE_ID]) {
-       case FILE_IN:   return fgetc((FILE*)(o.m[FIN]));
+       case FILE_IN:   return hw_fgetc((FILE*)(o.m[FIN]));
        case STRING_IN: return o.m[SIDX] >= o.m[SLEN] ? 
                                EOF : 
                                ((char*)(o.m[SIN]))[o.m[SIDX]++];
@@ -308,9 +319,9 @@ static int forth_get_word(uint8_t *p)
 {
 	int n = 0;
 	switch(o.m[SOURCE_ID]) {
-	case FILE_IN:   return fscanf((FILE*)(o.m[FIN]), o.word_fmt, p, &n);
+	case FILE_IN:   return hw_fget_word((FILE*)(o.m[FIN]), p, &n);
 	case STRING_IN:
-		if(sscanf((char *)&(((char*)(o.m[SIN]))[o.m[SIDX]]), o.word_fmt, p, &n) < 0)
+		if(hw_sget_word((char *)&(((char*)(o.m[SIN]))[o.m[SIDX]]), p, &n) < 0)
 			return EOF;
 		o.m[SIDX] += n;
 		return n;
@@ -337,6 +348,7 @@ static void compile(forth_cell_t code, const char *str)
 	m[m[DIC]++] = (l << WORD_LENGTH_OFFSET) | code; 
 }
 
+#ifndef NFIO
 static int blockio(forth_cell_t poffset, forth_cell_t id, char rw)
 { 
 	char name[16] = {0}; /* XXXX + ".blk" + '\0' + a little spare change */
@@ -346,7 +358,7 @@ static int blockio(forth_cell_t poffset, forth_cell_t id, char rw)
 		return -1;
 	sprintf(name, "%04x.blk", (int)id);
 	errno = 0;
-	if(!(file = fopen(name, rw == 'r' ? "rb" : "wb"))) { 
+	if(!(file = hw_fopen(name, rw == 'r' ? "rb" : "wb"))) { 
 		error("file open %s, %s", name, emsg());
 		return -1;
 	}
@@ -355,6 +367,7 @@ static int blockio(forth_cell_t poffset, forth_cell_t id, char rw)
 	fclose(file);
 	return n == BLOCK_SIZE ? 0 : -1;
 }
+#endif
 
 static int numberify(int base, forth_cell_t *n, const char *s)
 {
@@ -381,6 +394,7 @@ static forth_cell_t forth_find(const char *s)
 	return w > DICTIONARY_START ? w+1 : 0;
 }
 
+#ifndef NDEBUG
 static int print_unsigned_number(forth_cell_t u, forth_cell_t base, FILE *out)
 {
 	assert(base > 1 && base < 37);
@@ -390,7 +404,7 @@ static int print_unsigned_number(forth_cell_t u, forth_cell_t base, FILE *out)
 		s[i++] = conv[u % base];
 	while ((u /= base));
 	for(; i >= 0 && r >= 0; i--)
-		r = fputc(s[i], out);
+		r = hw_fputc(s[i], out);
 	return r;
 }
 
@@ -405,6 +419,7 @@ static int print_cell(FILE *output, forth_cell_t f)
 		return -1;
 	return print_unsigned_number(f, base, output);
 }
+#endif
 
 static forth_cell_t check_bounds(forth_cell_t f, unsigned line, forth_cell_t bound)
 {
@@ -457,6 +472,7 @@ static char *forth_get_string(forth_cell_t **S, forth_cell_t f)
 	return string;
 }
 
+#ifndef NDEBUG
 static void print_stack(FILE *out, forth_cell_t *S, forth_cell_t f)
 { 
 	forth_cell_t depth = (forth_cell_t)(S - o.vstart);
@@ -464,16 +480,18 @@ static void print_stack(FILE *out, forth_cell_t *S, forth_cell_t f)
 	if(!depth)
 		return;
 	print_cell(out, f);
-	fputc(' ', out);
+	hw_fputc(' ', out);
 	while(o.vstart + 1 < S) {
 		print_cell(out, *(S--));
-		fputc(' ', out);
+		hw_fputc(' ', out);
 	}
-	fputc('\n', out);
+	hw_fputc('\n', out);
 }
+#endif
 
 static void trace(forth_cell_t instruction, forth_cell_t *S, forth_cell_t f)
 {
+#ifndef NDEBUG
 	if(o.m[DEBUG] < DEBUG_INSTRUCTION)
 		return;
 	if(instruction > LAST_INSTRUCTION) {
@@ -483,10 +501,12 @@ static void trace(forth_cell_t instruction, forth_cell_t *S, forth_cell_t f)
 	fprintf(stderr, "\t( %s\t ", instruction_names[instruction]);
 	print_stack(stderr, S, f);
 	fputs(" )\n", stderr);
+#endif
 }
 
 static void help(void)
 {
+#ifndef NDEBUG
 	fputs("Static Forth Help\n"
 		"\tAuthor: Richard Howe\n"
 		"\tLicense: MIT\n"
@@ -497,7 +517,7 @@ static void help(void)
 		fprintf(stderr, "%s\t\t%s\n",
 				instruction_names[i],
 				instruction_help_strings[i]);
-
+#endif
 }
 
 static void forth_set_file_input(FILE *in)
@@ -707,13 +727,15 @@ static int forth_run(void)
 		case UMORE:   cd(2); f = *S-- > f;                       break;
 		case EXIT:    I = m[ck(m[RSTK]--)];                      break;
 		case KEY:     *++S = f; f = forth_get_char();            break;
-		case EMIT:    f = fputc(f, (FILE*)(o.m[FOUT]));          break;
+		case EMIT:    f = hw_fputc(f, (FILE*)(o.m[FOUT]));          break;
 		case FROMR:   *++S = f; f = m[ck(m[RSTK]--)];            break;
 		case TOR:     cd(1); m[ck(++m[RSTK])] = f; f = *S--;     break;
 		case BRANCH:  I += m[ck(I)];                             break;
 		case QBRANCH: cd(1); I += f == 0 ? m[I] : 1; f = *S--;   break;
+#ifndef NDEBUG		
 		case PNUM:    cd(1); 
 			      f = print_cell((FILE*)(o.m[FOUT]), f); break;
+#endif				  
 		case QUOTE:   *++S = f;     f = m[ck(I++)];              break;
 		case COMMA:   cd(1); m[dic(m[DIC]++)] = f; f = *S--;     break;
 		case EQUAL:   cd(2); f = *S-- == f;                      break;
@@ -724,6 +746,7 @@ static int forth_run(void)
 		case TAIL:
 			m[RSTK]--;
 			break;
+#ifndef NFIO			
 		case BSAVE:
 			cd(2);
 			f = blockio(*S--, f, 'w');
@@ -732,6 +755,7 @@ static int forth_run(void)
 			cd(2);
 			f = blockio(*S--, f, 'r');
 			break;
+#endif			
 		case FIND:
 			*++S = f;
 			if(forth_get_word(o.s) < 0)
@@ -778,7 +802,9 @@ static int forth_run(void)
 				return -1;
 		}
 		break;
+#ifndef NDEBUG		
 		case PSTK:    print_stack((FILE*)(o.m[STDOUT]), S, f);   break;
+#endif		
 		case RESTART: cd(1); longjmp(on_error, f);               break;
 		case HELP:    help();                                    break;
 		default:
@@ -791,9 +817,10 @@ end:	o.S = S;
 	return 0;
 }
 
-int main(void)
+int forth_main(void)
 {
-	fputs("STATIC FORTH: TYPE 'HELP' FOR BASIC INFORMATION\n", stderr);
+	hw_init();
+	hw_fputs("STATIC FORTH: TYPE 'HELP' FOR BASIC INFORMATION\n", stderr);
 	forth_init(stdin, stdout);
 	return forth_run();
 }
