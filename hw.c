@@ -83,17 +83,26 @@ int hw_fget_word ( FILE * stream, char * word, int *n)
     // remove spaces
     do
     {
-    	if(util_cbuf_get(&io_cb, &c) != UTIL_CBUF_OK)
-    		return EOF;
-    } while (c == ' ');
+    	if(util_cbuf_get(&io_cb, &c) == UTIL_CBUF_EMPTY)
+    		continue;
+
+    	if(c == ' ' || c == '\n' || c == '\r' || c == '\t')
+    	{
+    		m++;
+    		continue;
+    	}
+    	else
+    		break;
+    } while(1);
 
     // get at most MAXIMUM_WORD_LENGTH-1 characters
     p[m++] = (char) c;
     while(m < (MAXIMUM_WORD_LENGTH-1))
     {
-    	if(util_cbuf_get(&io_cb, &c) != UTIL_CBUF_OK)
-    		break;
-    	if(c == ' ')
+    	if(util_cbuf_get(&io_cb, &c) == UTIL_CBUF_EMPTY)
+    		continue;
+
+    	if(c == ' ' || c == '\n' || c == '\r' || c == '\t')
     		break;
     	p[m++] = (char) c;
     }
@@ -115,22 +124,29 @@ int hw_sget_word (const char * s,  char * word, int *n)
     {
     	if(ps[m] == '\0')
     		return EOF;
-    } while (ps[m++] == ' ');
+    	if(ps[m] == ' ' || ps[m] == '\n' || ps[m] == '\r' || ps[m] == '\t')
+    	{
+    		m++;
+    		continue;
+    	}
+    	else
+    		break;
+    } while(1);
 
 
     // get at most MAXIMUM_WORD_LENGTH-1 characters
-    pw[k++] = ps[m-1];
+    pw[k++] = ps[m++];
 
     while(m < (MAXIMUM_WORD_LENGTH-1))
     {
-    	if(ps[m] == '\0' || ps[m] == ' ')
+    	if(ps[m] == '\0' || ps[m] == ' ' || ps[m] == '\n' || ps[m] == '\r' || ps[m] == '\t')
     		break;
 
     	pw[k++] = ps[m++];
     }
 
     pw[k] = '\0';
-    *n = k;
+    *n = m;
 
     return m;
 }

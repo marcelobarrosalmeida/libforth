@@ -289,19 +289,18 @@ static const char *emsg(void)
 static int logger(const char *prefix, const char *func, 
 		unsigned line, const char *fmt, ...)
 {
-#ifndef NDEBUG
 	int r;
 	va_list ap;
+	static char outb[64];
 	assert(prefix && func && fmt);
-	fprintf(stderr, "[%s %u] %s: ", func, line, prefix);
+	sprintf(outb, "[%s %u] %s: ", func, line, prefix);
+	hw_fputs(outb, stderr);
 	va_start(ap, fmt);
-	r = vfprintf(stderr, fmt, ap);
+	r = vsprintf(outb, fmt, ap);
+	hw_fputs(outb, stderr);
 	va_end(ap);
 	hw_fputc('\n', stderr);
 	return r;
-#else
-	return 0;
-#endif
 }
 
 static int forth_get_char(void)
